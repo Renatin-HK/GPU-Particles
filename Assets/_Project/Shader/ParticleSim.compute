@@ -1,0 +1,85 @@
+#pragma kernel CSMain
+
+// Buffers para ler e escrever dados
+RWStructuredBuffer<float2> _Positions;
+RWStructuredBuffer<float2> _Velocities;
+
+// Variáveis uniformes
+float _DeltaTime;
+float2 _Gravity;
+float _Drag;
+
+// variáveis para os limites
+float2 _BoundsMin;
+float2 _BoundsMax;
+
+// Variáveis de interação
+float2 _MousePos;
+float _InteractionRadius;
+float _InteractionStrength;
+
+[numthreads(256,1,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    
+    float2 pos = _Positions[index];
+    float2 vel = _Velocities[index];
+
+    // --- LÓGICA DA SIMULAÇÃO ---
+
+    // Interação com o mouse (Atração/Repulsão)
+    float2 dirToMouse = _MousePos - pos;
+    float distToMouse = length(dirToMouse);
+
+    if (distToMouse < _InteractionRadius)
+    {
+        // Normaliza o vetor de direção
+        dirToMouse /= distToMouse;
+        
+        // A força é maior quanto mais perto do mouse
+        float force = (1.0 - distToMouse / _InteractionRadius) * _InteractionStrength;
+        
+        // Aplica a força à velocidade
+        vel -= dirToMouse * force * _DeltaTime;
+    }
+
+    // Aplica a gravidade
+    vel += _Gravity * _DeltaTime;
+
+    // Aplica um pouco de atrito 
+    vel *= (1.0 - _Drag * _DeltaTime);
+
+    // Atualiza a posição com base na velocidade
+    pos += vel * _DeltaTime;
+
+    // Colisão com o bounding box
+    // Colisão Eixo X
+    if (pos.x < _BoundsMin.x)
+    {
+        pos.x = _BoundsMin.x;
+        vel.x *= -0.8; // Inverte e amortece a velocidade
+    }
+    else if (pos.x > _BoundsMax.x)
+    {
+        pos.x = _BoundsMax.x;
+        vel.x *= -0.8;
+    }
+
+    // Colisão Eixo Y
+    if (pos.y < _BoundsMin.y)
+    {
+        pos.y = _BoundsMin.y;
+        vel.y *= -0.8;
+    }
+    else if (pos.y > _BoundsMax.y)
+    {
+        pos.y = _BoundsMax.y;
+        vel.y *= -0.8;
+    }
+
+    // --- FIM DA LÓGICA ---
+    
+    _Positions[index] = pos;
+    _Velocities[index] = vel;
+}
