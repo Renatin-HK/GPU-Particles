@@ -1,85 +1,184 @@
-#pragma kernel CSMain
+#pragma kernel ClearGrid
+#pragma kernel BuildGrid
+#pragma kernel Simulate
 
-// Buffers para ler e escrever dados
+// Estrutura para ajudar a organizar os dados da grade
+struct GridIndex
+{
+    uint cellHash;
+    uint particleIndex;
+};
+
+// Buffers de dados principais
 RWStructuredBuffer<float2> _Positions;
 RWStructuredBuffer<float2> _Velocities;
+// Buffers para a grade espacial
+RWStructuredBuffer<GridIndex> _GridIndices;
+RWStructuredBuffer<uint> _GridOffsets; // Usa InterlockedAdd, então precisa ser RW
 
-// Variáveis uniformes
+// --- Variáveis Uniformes ---
 float _DeltaTime;
 float2 _Gravity;
 float _Drag;
-
-// variáveis para os limites
 float2 _BoundsMin;
 float2 _BoundsMax;
+uint2 _GridSize;
+int _ParticleCount;
 
-// Variáveis de interação
+// Interação
 float2 _MousePos;
 float _InteractionRadius;
 float _InteractionStrength;
+float _RepulsionRadius;
+float _RepulsionStrength;
+float _RepulsionRadiusSq; // Raio ao quadrado, para evitar sqrt
 
+// --- Funções Helper ---
+
+// Converte uma posição no mundo para um índice de célula 1D (hash)
+uint GetCellHash(float2 pos)
+{
+    // Normaliza a posição para o espaço da grade (0 a 1)
+    float2 normalizedPos = (pos - _BoundsMin) / (_BoundsMax - _BoundsMin);
+    // Converte para coordenadas de célula
+    int2 cellCoords = int2(normalizedPos * _GridSize);
+    // Garante que está dentro dos limites da grade
+    cellCoords = clamp(cellCoords, int2(0,0), (int2)_GridSize - 1);
+    // Converte coordenadas 2D para um índice 1D (hash)
+    return cellCoords.y * _GridSize.x + cellCoords.x;
+}
+
+
+// --- KERNELS ---
+
+// Kernel 1: Limpa os contadores da grade
 [numthreads(256,1,1)]
-void CSMain (uint3 id : SV_DispatchThreadID)
+void ClearGrid(uint3 id : SV_DispatchThreadID)
+{
+    // id.x é o índice da célula da grade
+    if (id.x < _GridSize.x * _GridSize.y)
+    {
+        _GridOffsets[id.x] = 0;
+    }
+}
+
+// Kernel 2: Conta as partículas por célula.
+// Este é um passo preparatório para a simulação.
+// Ele usa operações atômicas para contar com segurança quantas partículas caem em cada célula.
+[numthreads(256,1,1)]
+void BuildGrid(uint3 id : SV_DispatchThreadID)
 {
     uint index = id.x;
+    if (index >= _ParticleCount) return;
+
+    uint cellHash = GetCellHash(_Positions[index]);
+
+    // Operação Atômica: Incrementa o contador da célula e retorna o valor ANTERIOR.
+    // Isso nos dá um índice único para cada partícula dentro da lista daquela célula.
+    uint listIndex;
+    InterlockedAdd(_GridOffsets[cellHash], 1, listIndex);
+
+    // Armazena o hash da célula e o índice original da partícula.
+    // A ordenação não é estritamente necessária para esta implementação,
+    // mas armazenar o hash é útil.
+    _GridIndices[index].cellHash = cellHash;
+    _GridIndices[index].particleIndex = index;
     
+    // NOTA: Uma implementação mais avançada faria uma "prefix sum" aqui
+    // para transformar os contadores em offsets e depois um passo de ordenação.
+    // Para simplificar, vamos fazer a busca na simulação de uma forma um pouco diferente.
+}
+
+
+// Kernel 3: Simulação Principal
+[numthreads(256,1,1)]
+void Simulate(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= _ParticleCount) return;
+
     float2 pos = _Positions[index];
     float2 vel = _Velocities[index];
-
+    
     // --- LÓGICA DA SIMULAÇÃO ---
 
-    // Interação com o mouse (Atração/Repulsão)
+    // 1. Repulsão entre Partículas
+    float2 repulsionForce = float2(0, 0);
+    uint myCellHash = GetCellHash(pos);
+    int2 myCellCoords = int2(myCellHash % _GridSize.x, myCellHash / _GridSize.x);
+
+    // Loop através da vizinhança 3x3 (célula atual + 8 vizinhas)
+    for (int y = -1; y <= 1; y++)
+    {
+        for (int x = -1; x <= 1; x++)
+        {
+            int2 neighborCellCoords = myCellCoords + int2(x, y);
+
+            // Ignora células fora da grade
+            if (neighborCellCoords.x < 0 || neighborCellCoords.x >= _GridSize.x ||
+                neighborCellCoords.y < 0 || neighborCellCoords.y >= _GridSize.y)
+            {
+                continue;
+            }
+
+            uint neighborCellHash = neighborCellCoords.y * _GridSize.x + neighborCellCoords.x;
+            
+            // Itera por TODAS as partículas e verifica se elas pertencem a esta célula vizinha
+            // Esta é a parte "simplificada" que evita a ordenação complexa.
+            for (uint i = 0; i < _ParticleCount; i++)
+            {
+                // Se a partícula 'i' pertence à célula vizinha que estamos checando...
+                if (_GridIndices[i].cellHash == neighborCellHash)
+                {
+                    uint otherIndex = _GridIndices[i].particleIndex;
+
+                    // Não se repele a si mesma
+                    if (index == otherIndex) continue;
+
+                    float2 dir = pos - _Positions[otherIndex];
+                    float distSq = dot(dir, dir); // Usar distância ao quadrado é mais rápido
+
+                    // Se estiver dentro do raio de repulsão...
+                    if (distSq > 0 && distSq < _RepulsionRadius * _RepulsionRadius)
+                    {
+                        float dist = sqrt(distSq);
+                        float force = 1.0 - (dist / _RepulsionRadius);
+                        repulsionForce += (dir / dist) * force * _RepulsionStrength;
+                    }
+                }
+            }
+        }
+    }
+
+    // Aplica a força de repulsão acumulada
+    vel += repulsionForce * _DeltaTime;
+
+
+    // 2. Interação com o mouse
     float2 dirToMouse = _MousePos - pos;
     float distToMouse = length(dirToMouse);
-
     if (distToMouse < _InteractionRadius)
     {
-        // Normaliza o vetor de direção
         dirToMouse /= distToMouse;
-        
-        // A força é maior quanto mais perto do mouse
         float force = (1.0 - distToMouse / _InteractionRadius) * _InteractionStrength;
-        
-        // Aplica a força à velocidade
         vel -= dirToMouse * force * _DeltaTime;
     }
 
-    // Aplica a gravidade
+    // 3. Aplica a gravidade e atrito
     vel += _Gravity * _DeltaTime;
-
-    // Aplica um pouco de atrito 
     vel *= (1.0 - _Drag * _DeltaTime);
 
-    // Atualiza a posição com base na velocidade
+    // 4. Atualiza a posição
     pos += vel * _DeltaTime;
 
-    // Colisão com o bounding box
-    // Colisão Eixo X
-    if (pos.x < _BoundsMin.x)
-    {
-        pos.x = _BoundsMin.x;
-        vel.x *= -0.8; // Inverte e amortece a velocidade
-    }
-    else if (pos.x > _BoundsMax.x)
-    {
-        pos.x = _BoundsMax.x;
-        vel.x *= -0.8;
-    }
-
-    // Colisão Eixo Y
-    if (pos.y < _BoundsMin.y)
-    {
-        pos.y = _BoundsMin.y;
-        vel.y *= -0.8;
-    }
-    else if (pos.y > _BoundsMax.y)
-    {
-        pos.y = _BoundsMax.y;
-        vel.y *= -0.8;
-    }
+    // 5. Colisão com os limites
+    if (pos.x < _BoundsMin.x) { pos.x = _BoundsMin.x; vel.x *= -0.5; }
+    else if (pos.x > _BoundsMax.x) { pos.x = _BoundsMax.x; vel.x *= -0.5; }
+    if (pos.y < _BoundsMin.y) { pos.y = _BoundsMin.y; vel.y *= -0.5; }
+    else if (pos.y > _BoundsMax.y) { pos.y = _BoundsMax.y; vel.y *= -0.5; }
 
     // --- FIM DA LÓGICA ---
-    
+
     _Positions[index] = pos;
     _Velocities[index] = vel;
 }

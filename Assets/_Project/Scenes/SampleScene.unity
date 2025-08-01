@@ -245,14 +245,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d63f99ae7ba78054fa9b565194f969e3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  particleCount: 100000
-  particleSize: 0.05
+  particleCount: 10000
   gravity: {x: 0, y: -0.5}
   drag: 0.1
+  interactionRadius: 2.56
+  interactionStrength: 20
+  repulsionRadius: 0.28
+  repulsionStrength: 10.64
   boundsSize: {x: 16, y: 9}
   boundsCenter: {x: 0, y: 0}
-  interactionRadius: 2
-  interactionStrength: 20
   computeShader: {fileID: 7200000, guid: c6cf7ba1e6df66e4586dea85e957695e, type: 3}
   particleMaterial: {fileID: 2100000, guid: 1e080585301bf6746ac2ec648d7f5f63, type: 2}
 --- !u!4 &908131062
