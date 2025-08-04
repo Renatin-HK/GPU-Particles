@@ -7,6 +7,9 @@ public class ParticleController : MonoBehaviour
 {
     [Header("Configurações da Simulação")]
     public int particleCount = 100000;
+
+    [Tooltip("Tamanho visual de cada partícula")]
+    public float particleSize = 0.05f;
     public Vector2 gravity = new Vector2(0.0f, -0.5f);
     public float drag = 0.1f;
 
@@ -29,9 +32,8 @@ public class ParticleController : MonoBehaviour
     // Buffers da GPU
     private ComputeBuffer positionsBuffer;
     private ComputeBuffer velocitiesBuffer;
-    // Novos buffers para a grade espacial
-    private ComputeBuffer gridIndicesBuffer; // Armazena o índice da célula e o índice da partícula
-    private ComputeBuffer gridOffsetsBuffer; // Marca o início de cada célula no buffer de índices
+    private ComputeBuffer gridIndicesBuffer;
+    private ComputeBuffer gridOffsetsBuffer;
 
     // Handles dos Kernels
     private int clearGridKernel;
@@ -53,6 +55,7 @@ public class ParticleController : MonoBehaviour
         RepulsionRadiusID = Shader.PropertyToID("_RepulsionRadius"),
         RepulsionStrengthID = Shader.PropertyToID("_RepulsionStrength"),
         ParticleCountID = Shader.PropertyToID("_ParticleCount"),
+        ParticleSizeID = Shader.PropertyToID("_ParticleSize"),
         BoundsMinID = Shader.PropertyToID("_BoundsMin"),
         BoundsMaxID = Shader.PropertyToID("_BoundsMax"),
         GridSizeID = Shader.PropertyToID("_GridSize");
@@ -68,12 +71,10 @@ public class ParticleController : MonoBehaviour
         positionsBuffer = new ComputeBuffer(particleCount, sizeof(float) * 2);
         velocitiesBuffer = new ComputeBuffer(particleCount, sizeof(float) * 2);
 
-        // O tamanho da célula da grade deve ser pelo menos o raio de repulsão
         int gridWidth = Mathf.CeilToInt(boundsSize.x / repulsionRadius);
         int gridHeight = Mathf.CeilToInt(boundsSize.y / repulsionRadius);
         int totalCells = gridWidth * gridHeight;
-
-        // Cada índice da grade armazena 2 uints: o hash da célula e o índice da partícula
+        
         gridIndicesBuffer = new ComputeBuffer(particleCount, sizeof(uint) * 2);
         gridOffsetsBuffer = new ComputeBuffer(totalCells, sizeof(uint));
 
@@ -94,24 +95,19 @@ public class ParticleController : MonoBehaviour
 
     void SetupShaderParameters()
     {
-        // Pega os handles dos nossos três kernels
         clearGridKernel = computeShader.FindKernel("ClearGrid");
         buildGridKernel = computeShader.FindKernel("BuildGrid");
         simulateKernel = computeShader.FindKernel("Simulate");
 
-        // Associa os buffers a todos os kernels que precisam deles
         computeShader.SetBuffer(clearGridKernel, GridOffsetsID, gridOffsetsBuffer);
-
         computeShader.SetBuffer(buildGridKernel, PositionsID, positionsBuffer);
         computeShader.SetBuffer(buildGridKernel, GridIndicesID, gridIndicesBuffer);
         computeShader.SetBuffer(buildGridKernel, GridOffsetsID, gridOffsetsBuffer);
-
         computeShader.SetBuffer(simulateKernel, PositionsID, positionsBuffer);
         computeShader.SetBuffer(simulateKernel, VelocitiesID, velocitiesBuffer);
         computeShader.SetBuffer(simulateKernel, GridIndicesID, gridIndicesBuffer);
         computeShader.SetBuffer(simulateKernel, GridOffsetsID, gridOffsetsBuffer);
 
-        // Associa o buffer de posições ao material de renderização
         particleMaterial.SetBuffer(PositionsID, positionsBuffer);
         particleMaterial.SetInt(ParticleCountID, particleCount);
     }
@@ -119,6 +115,8 @@ public class ParticleController : MonoBehaviour
     void Update()
     {
         // --- Configuração dos parâmetros do shader ---
+        particleMaterial.SetFloat(ParticleSizeID, particleSize); 
+
         Vector2 boundsMin = boundsCenter - boundsSize * 0.5f;
         Vector2 boundsMax = boundsCenter + boundsSize * 0.5f;
         int gridWidth = Mathf.CeilToInt(boundsSize.x / repulsionRadius);
@@ -133,7 +131,6 @@ public class ParticleController : MonoBehaviour
         computeShader.SetVector(GridSizeID, new Vector4(gridSize.x, gridSize.y, 0, 0));
         computeShader.SetInt(ParticleCountID, particleCount);
 
-        // Interação
         Vector2 mousePos = GetMouseWorldPosition();
         computeShader.SetVector(MousePosID, mousePos);
         computeShader.SetFloat(InteractionRadiusID, interactionRadius);
@@ -141,17 +138,11 @@ public class ParticleController : MonoBehaviour
         computeShader.SetFloat(RepulsionRadiusID, repulsionRadius);
         computeShader.SetFloat(RepulsionStrengthID, repulsionStrength);
 
-        // --- Execução dos Kernels em Ordem ---
         int threadGroups = Mathf.CeilToInt(particleCount / 256.0f);
         int gridThreadGroups = Mathf.CeilToInt(gridOffsetsBuffer.count / 256.0f);
 
-        // 1. Limpa a grade da frame anterior
         computeShader.Dispatch(clearGridKernel, gridThreadGroups, 1, 1);
-
-        // 2. Constrói a nova grade com as posições atuais
         computeShader.Dispatch(buildGridKernel, threadGroups, 1, 1);
-
-        // 3. Executa a simulação (repulsão, gravidade, etc.)
         computeShader.Dispatch(simulateKernel, threadGroups, 1, 1);
     }
 
