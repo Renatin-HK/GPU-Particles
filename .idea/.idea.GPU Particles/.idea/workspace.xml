@@ -6,8 +6,8 @@
   <component name="ChangeListManager">
     <list default="true" id="70490f0f-c1a8-4ef5-b8a6-b5e9ffe94e82" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/.idea.GPU Particles/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.GPU Particles/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Assets/_Project/Scenes/SampleScene.unity" beforeDir="false" afterPath="$PROJECT_DIR$/Assets/_Project/Scenes/SampleScene.unity" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Assets/_Project/Scripts/ParticleController.cs" beforeDir="false" afterPath="$PROJECT_DIR$/Assets/_Project/Scripts/ParticleController.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Assets/_Project/Shader/ParticleRender.shader" beforeDir="false" afterPath="$PROJECT_DIR$/Assets/_Project/Shader/ParticleRender.shader" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -97,7 +97,7 @@
       <workItem from="1754012336361" duration="8000" />
       <workItem from="1754012352194" duration="52000" />
       <workItem from="1754012422169" duration="826000" />
-      <workItem from="1754268165293" duration="407000" />
+      <workItem from="1754268165293" duration="2294000" />
     </task>
     <servers />
   </component>

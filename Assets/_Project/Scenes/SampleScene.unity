@@ -245,10 +245,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d63f99ae7ba78054fa9b565194f969e3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  particleCount: 10000
+  particleCount: 5000
+  particleSize: 0.05
   gravity: {x: 0, y: -0.5}
   drag: 0.1
-  interactionRadius: 2.56
+  interactionRadius: 2
   interactionStrength: 20
   repulsionRadius: 0.28
   repulsionStrength: 10.64

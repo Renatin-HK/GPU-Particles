@@ -6,20 +6,20 @@ using Random = UnityEngine.Random;
 public class ParticleController : MonoBehaviour
 {
     [Header("Configurações da Simulação")]
-    public int particleCount = 100000;
+    [Range(1000, 10000)]public int particleCount = 100000;
 
     [Tooltip("Tamanho visual de cada partícula")]
-    public float particleSize = 0.05f;
+    [Range(0.01f, 0.1f)]public float particleSize = 0.05f;
     public Vector2 gravity = new Vector2(0.0f, -0.5f);
-    public float drag = 0.1f;
+    [Range(0.1f, 1)]public float drag = 0.1f;
 
     [Header("Interação e Repulsão")]
-    public float interactionRadius = 2.0f;
-    public float interactionStrength = 20.0f;
+    [Range(1, 10)]public float interactionRadius = 2.0f;
+    [Range(10, 30)]public float interactionStrength = 20.0f;
     [Tooltip("Raio de repulsão entre partículas")]
-    public float repulsionRadius = 0.1f;
+    [Range(0.1f, 1)]public float repulsionRadius = 0.1f;
     [Tooltip("Força com que as partículas se repelem")]
-    public float repulsionStrength = 10.0f;
+    [Range(1, 20)]public float repulsionStrength = 10.0f;
 
     [Header("Limites (Bounds)")]
     public Vector2 boundsSize = new Vector2(16, 9);
